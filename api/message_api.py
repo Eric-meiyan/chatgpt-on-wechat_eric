@@ -6,6 +6,9 @@ from pydantic import BaseModel
 from datetime import datetime
 import threading
 from common.db_utils import DatabaseManager
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Group Message API", 
              description="API for querying WeChat group messages")
@@ -26,6 +29,14 @@ app.add_middleware(
     max_age=3600,  # 预检请求的缓存时间
 )
 
+# 配置日志
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("FastAPI application starting up...")
+    
 # 定义响应模型
 class GroupMessage(BaseModel):
     id: int
@@ -124,6 +135,7 @@ async def get_messages(
 @app.get("/groups/", response_model=List[GroupInfo])
 async def get_groups():
     """获取所有群组信息"""
+    logger.debug("Received request for groups")
     try:
         db = DatabaseManager()
         with db._lock:
@@ -148,10 +160,12 @@ async def get_groups():
                 "last_active": datetime.fromtimestamp(row[3]).strftime('%Y-%m-%d %H:%M:%S')
             })
             
+        logger.info(f"Successfully retrieved {len(groups)} groups")
         return groups
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting groups: {e}")
+        raise
 
 @app.get("/messages/{msg_id}", response_model=GroupMessage)
 async def get_message_by_id(msg_id: str):
@@ -185,20 +199,25 @@ def start_api_server(host="0.0.0.0", port=8000):
     """启动API服务器"""
     uvicorn.run(
         app, 
-        host=host,  # 监听所有网络接口
+        host=host,
         port=port,
-        # 额外的安全配置
-        ssl_keyfile=None,  # 如果需要HTTPS，设置SSL证书
-        ssl_certfile=None,
         access_log=True,
+        log_level="debug",  # 添加详细日志
+        workers=1,
+        reload=False
     )
 
 def run_api_server_in_thread(host="0.0.0.0", port=8000):
     """在新线程中运行API服务器"""
-    api_thread = threading.Thread(
-        target=start_api_server,
-        args=(host, port),
-        daemon=True
-    )
-    api_thread.start()
-    return api_thread 
+    try:
+        logger.info(f"Starting API server on {host}:{port}")
+        api_thread = threading.Thread(
+            target=start_api_server,
+            args=(host, port),
+            daemon=True
+        )
+        api_thread.start()
+        return api_thread
+    except Exception as e:
+        logger.error(f"Failed to start API server: {e}")
+        raise
