@@ -24,6 +24,7 @@ from common.utils import convert_webp_to_png, remove_markdown_symbol
 from config import conf, get_appdata_dir
 from lib import itchat
 from lib.itchat.content import *
+from common.db_utils import save_group_message 
 
 
 @itchat.msg_register([TEXT, VOICE, PICTURE, NOTE, ATTACHMENT, SHARING])
@@ -117,6 +118,10 @@ class WechatChannel(ChatChannel):
 
     def startup(self):
         try:
+            # 启动API服务器
+            from api.message_api import run_api_server_in_thread
+            api_thread = run_api_server_in_thread(port=8000)
+            
             itchat.instance.receivingRetryCount = 600  # 修改断线超时时间
             # login by scan QRCode
             hotReload = conf().get("hot_reload", False)
@@ -192,8 +197,6 @@ class WechatChannel(ChatChannel):
     def handle_group(self, cmsg: ChatMessage):
         try:
             # 保存群消息到数据库
-            from common.db_utils import save_group_message
-            
             # 构造消息数据
             message_data = {
                 "msg_id": cmsg.msg_id,
