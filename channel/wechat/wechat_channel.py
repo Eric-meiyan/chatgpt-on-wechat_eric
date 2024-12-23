@@ -190,24 +190,47 @@ class WechatChannel(ChatChannel):
     @time_checker
     @_check
     def handle_group(self, cmsg: ChatMessage):
-        if cmsg.ctype == ContextType.VOICE:
-            if conf().get("group_speech_recognition") != True:
-                return
-            logger.debug("[WX]receive voice for group msg: {}".format(cmsg.content))
-        elif cmsg.ctype == ContextType.IMAGE:
-            logger.debug("[WX]receive image for group msg: {}".format(cmsg.content))
-        elif cmsg.ctype in [ContextType.JOIN_GROUP, ContextType.PATPAT, ContextType.ACCEPT_FRIEND, ContextType.EXIT_GROUP]:
-            logger.debug("[WX]receive note msg: {}".format(cmsg.content))
-        elif cmsg.ctype == ContextType.TEXT:
-            # logger.debug("[WX]receive group msg: {}, cmsg={}".format(json.dumps(cmsg._rawmsg, ensure_ascii=False), cmsg))
-            pass
-        elif cmsg.ctype == ContextType.FILE:
-            logger.debug(f"[WX]receive attachment msg, file_name={cmsg.content}")
-        else:
-            logger.debug("[WX]receive group msg: {}".format(cmsg.content))
-        context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg, no_need_at=conf().get("no_need_at", False))
-        if context:
-            self.produce(context)
+        try:
+            # 保存群消息到数据库
+            from common.db_utils import save_group_message
+            
+            # 构造消息数据
+            message_data = {
+                "msg_id": cmsg.msg_id,
+                "group_id": cmsg.other_user_id,  # 群ID
+                "group_name": cmsg.other_user_nickname, # 群名称
+                "sender_id": cmsg.actual_user_id,  # 发送者ID
+                "sender_name": cmsg.actual_user_nickname, # 发送者昵称
+                "content": cmsg.content,  # 消息内容
+                "msg_type": str(cmsg.ctype),  # 消息类型
+                "create_time": cmsg.create_time,  # 创建时间
+            }
+            
+            # 异步保存到数据库
+            save_group_message(message_data)
+            
+            # 原有的消息处理逻辑
+            if cmsg.ctype == ContextType.VOICE:
+                if conf().get("group_speech_recognition") != True:
+                    return
+                logger.debug("[WX]receive voice for group msg: {}".format(cmsg.content))
+            elif cmsg.ctype == ContextType.IMAGE:
+                logger.debug("[WX]receive image for group msg: {}".format(cmsg.content))
+            elif cmsg.ctype in [ContextType.JOIN_GROUP, ContextType.PATPAT, ContextType.ACCEPT_FRIEND, ContextType.EXIT_GROUP]:
+                logger.debug("[WX]receive note msg: {}".format(cmsg.content))
+            elif cmsg.ctype == ContextType.TEXT:
+                pass
+            elif cmsg.ctype == ContextType.FILE:
+                logger.debug(f"[WX]receive attachment msg, file_name={cmsg.content}")
+            else:
+                logger.debug("[WX]receive group msg: {}".format(cmsg.content))
+
+            context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg)
+            if context:
+                self.produce(context)
+            
+        except Exception as e:
+            logger.error(f"Error handling group message: {e}")
 
     # 统一的发送函数，每个Channel自行实现，根据reply的type字段发送不同类型的消息
     def send(self, reply: Reply, context: Context):
