@@ -13,10 +13,17 @@ app = FastAPI(title="Group Message API",
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应该设置具体的域名
+    # 允许的源列表 - 可以设置多个域名
+    allow_origins=[
+        "http://103.194.107.232:8000",
+        "http://localhost:8000",
+        "*"  # 允许所有源访问 (仅用于开发环境，生产环境建议明确指定允许的域名)
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_headers=["*"],  # 允许所有请求头
+    expose_headers=["*"],  # 允许暴露的响应头
+    max_age=3600,  # 预检请求的缓存时间
 )
 
 # 定义响应模型
@@ -176,7 +183,15 @@ async def get_message_by_id(msg_id: str):
 
 def start_api_server(host="0.0.0.0", port=8000):
     """启动API服务器"""
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(
+        app, 
+        host=host,  # 监听所有网络接口
+        port=port,
+        # 额外的安全配置
+        ssl_keyfile=None,  # 如果需要HTTPS，设置SSL证书
+        ssl_certfile=None,
+        access_log=True,
+    )
 
 def run_api_server_in_thread(host="0.0.0.0", port=8000):
     """在新线程中运行API服务器"""
